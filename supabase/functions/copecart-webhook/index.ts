@@ -1,10 +1,17 @@
 // supabase/functions/copecart-webhook/index.ts
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { handleCors, corsJsonResponse } from "../cors.ts";
 
 const WEBHOOK_SECRET = Deno.env.get("COPECART_WEBHOOK_SECRET");
 
 serve(async (req) => {
+    // CORS Preflight-Anfragen behandeln
+    const corsResponse = handleCors(req);
+    if (corsResponse) {
+        return corsResponse;
+    }
+
     try {
         // Verifiziere den Webhook-Secret (Header oder als Parameter)
         const url = new URL(req.url);
@@ -12,10 +19,7 @@ serve(async (req) => {
             url.searchParams.get("secret");
 
         if (providedSecret !== WEBHOOK_SECRET) {
-            return new Response(JSON.stringify({ error: "Unauthorized" }), {
-                status: 401,
-                headers: { "Content-Type": "application/json" },
-            });
+            return corsJsonResponse({ error: "Unauthorized" }, 401);
         }
 
         // Parse CopeCart-Daten
@@ -33,16 +37,10 @@ serve(async (req) => {
         if (
             !["order.completed", "subscription.activated"].includes(event_type)
         ) {
-            return new Response(
-                JSON.stringify({
-                    status: "ignored",
-                    reason: "irrelevant event",
-                }),
-                {
-                    status: 200,
-                    headers: { "Content-Type": "application/json" },
-                },
-            );
+            return corsJsonResponse({
+                status: "ignored",
+                reason: "irrelevant event",
+            });
         }
 
         // Supabase Admin-Client
@@ -91,17 +89,11 @@ serve(async (req) => {
 
             if (updateError) throw updateError;
 
-            return new Response(
-                JSON.stringify({
-                    status: "success",
-                    action: "updated",
-                    user_id: existingUser.auth_id,
-                }),
-                {
-                    status: 200,
-                    headers: { "Content-Type": "application/json" },
-                },
-            );
+            return corsJsonResponse({
+                status: "success",
+                action: "updated",
+                user_id: existingUser.auth_id,
+            });
         } else {
             // Neuen Benutzer erstellen
             // Generiere ein zufälliges Passwort
@@ -141,26 +133,17 @@ serve(async (req) => {
             // Hier könntest du eine weitere Funktion aufrufen, um E-Mails zu versenden
             // oder einen externen E-Mail-Service nutzen
 
-            return new Response(
-                JSON.stringify({
-                    status: "success",
-                    action: "created",
-                    user_id: authData.user.id,
-                    temp_password: tempPassword, // In Produktion nie zurücksenden!
-                }),
-                {
-                    status: 201,
-                    headers: { "Content-Type": "application/json" },
-                },
-            );
+            return corsJsonResponse({
+                status: "success",
+                action: "created",
+                user_id: authData.user.id,
+                temp_password: tempPassword, // In Produktion nie zurücksenden!
+            });
         }
     } catch (error: unknown) {
-        return new Response(JSON.stringify({ 
-            status: 'error',
+        return corsJsonResponse({ 
+            status: "error",
             message: error instanceof Error ? error.message : "Unbekannter Fehler" 
-        }), {
-            status: 400,
-            headers: { 'Content-Type': 'application/json' }
-        })
+        }, 400);
     }
 });

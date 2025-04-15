@@ -12,6 +12,8 @@
     - Always add loading and error states to data fetching components
     - Implement error handling and error logging
     - Use semantic HTML elements where possible
+    - Always prefer direct use of Supabase Auth API for authentication operations
+    - Use Supabase API directly whenever possible instead of custom implementations
 
     General preferences:
 

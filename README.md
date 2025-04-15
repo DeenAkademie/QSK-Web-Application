@@ -102,3 +102,77 @@ Please file feedback and issues over on the [Supabase GitHub org](https://github
 - [Next.js Subscription Payments Starter](https://github.com/vercel/nextjs-subscription-payments)
 - [Cookie-based Auth and the Next.js 13 App Router (free course)](https://youtube.com/playlist?list=PL5S4mPUpp4OtMhpnp93EFSo42iQ40XjbF)
 - [Supabase Auth and the Next.js App Router](https://github.com/supabase/supabase/tree/master/examples/auth/nextjs)
+
+## Lokale Supabase-Entwicklung
+
+### Wichtige Befehle
+
+#### Supabase lokal starten und verwalten
+
+```bash
+# Starte lokale Supabase-Instanz
+npx supabase start
+
+# Prüfe Status der lokalen Supabase-Instanz
+npx supabase status
+
+# Stoppe lokale Supabase-Instanz
+npx supabase stop
+```
+
+#### Edge Functions
+
+```bash
+# Edge Functions lokal ausführen
+npx supabase functions serve
+
+# Manuelles Hinzufügen von CORS-Headern in der Edge Function
+# (Füge diesen Code in jede Edge Function ein):
+const corsHeaders = {
+  'Access-Control-Allow-Origin': 'http://localhost:3000',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
+
+// Für OPTIONS-Anfragen (Preflight)
+if (req.method === 'OPTIONS') {
+  return new Response('ok', { headers: corsHeaders });
+}
+
+// Bei allen anderen Responses
+return new Response(JSON.stringify(result), {
+  headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  status: 200,
+});
+
+# Edge Functions auflisten
+npx supabase functions list
+
+# Edge Function in die Cloud deployen (für Produktion)
+npx supabase functions deploy [function-name]
+```
+
+#### Datenbank-Migrations
+
+```bash
+# Neue Migration erstellen
+npx supabase migration new [migration-name]
+
+# Migrations anwenden
+npx supabase db push
+
+# Datenbank zurücksetzen
+npx supabase db reset
+```
+
+### Wichtige URLs
+
+- Supabase Studio UI: http://localhost:54323
+- Supabase API-Endpunkt: http://localhost:54321
+- Email-Inbox für Entwicklung: http://localhost:54324
+
+### Fehlerbehebung
+
+- CORS-Fehler: Füge CORS-Header direkt in deinen Edge Functions hinzu (siehe Code-Beispiel oben)
+- Datenbankverbindungsprobleme: Überprüfe mit `npx supabase status`
+- Auth-Probleme: Überprüfe die Einstellungen im Supabase Studio unter "Authentication" > "Providers"

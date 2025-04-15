@@ -1,10 +1,60 @@
 // supabase/functions/create-user/index.ts
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { corsHeaders, handleCors } from "../cors.ts";
+
+// Hilfsfunktion, um den Autorisierungstoken aus dem Header zu extrahieren
+function getAuthToken(req: Request): string | null {
+    const authHeader = req.headers.get('authorization');
+    if (!authHeader) {
+        return null;
+    }
+    // "Bearer TOKEN" Format extrahieren
+    const match = authHeader.match(/^Bearer (.*)$/);
+    if (!match || match.length < 2) {
+        return null;
+    }
+    return match[1];
+}
 
 serve(async (req) => {
+    console.log("Received request to create-user function");
+    
+    // CORS Preflight-Anfragen behandeln
+    const corsResponse = handleCors(req);
+    if (corsResponse) {
+        console.log("Responding to CORS preflight request");
+        return corsResponse;
+    }
+    
+    // Auth-Token aus Header extrahieren
+    const token = getAuthToken(req);
+    if (!token) {
+        console.error("Missing authorization header");
+        return new Response(
+            JSON.stringify({
+                success: false,
+                error: "Authorization header missing",
+                meta: {
+                    timestamp: new Date().toISOString(),
+                    operation: "user_creation"
+                }
+            }),
+            { 
+                status: 401, 
+                headers: { 
+                    ...corsHeaders,
+                    "Content-Type": "application/json" 
+                } 
+            }
+        );
+    }
+
     try {
         // Alle Daten aus dem Registrierungsformular
+        const reqBody = await req.json();
+        console.log("Request body received");
+
         const {
             email,
             password,
@@ -13,63 +63,173 @@ serve(async (req) => {
             lastName,
             gender,
             role = "user",
-        } = await req.json();
+        } = reqBody;
 
-        // Admin-Client mit voller Berechtigung
+        console.log("Processing registration for:", email);
+
+        // Standard-Client mit angemessenen Berechtigungen
+        const supabase = createClient(
+            Deno.env.get("SUPABASE_URL") ?? "",
+            Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+        );
+
+        console.log("Creating user with Supabase Auth");
+        // 1. Auth Benutzer erstellen mit der nativen signUp-Methode
+        const { data: authData, error: authError } = await supabase.auth.signUp(
+            {
+                email,
+                password,
+                options: {
+                    data: {
+                        userName: userName || email.split("@")[0],
+                        firstName: firstName || null,
+                        lastName: lastName || null,
+                        gender: gender || null,
+                        role: role,
+                    },
+                },
+            },
+        );
+
+        if (authError) {
+            console.error("Auth error:", authError);
+            return new Response(
+                JSON.stringify({
+                    success: false,
+                    error: authError.message,
+                    meta: {
+                        timestamp: new Date().toISOString(),
+                        operation: "user_creation",
+                    },
+                }),
+                {
+                    status: 400,
+                    headers: {
+                        ...corsHeaders,
+                        "Content-Type": "application/json",
+                    },
+                },
+            );
+        }
+        console.log("User created in Auth");
+
+        // Admin-Client für Datenbankoperationen (nur falls nötig)
         const supabaseAdmin = createClient(
             Deno.env.get("SUPABASE_URL") ?? "",
             Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
         );
 
-        // 1. Auth Benutzer erstellen
-        const { data: authData, error: authError } = await supabaseAdmin.auth
-            .admin.createUser({
-                email,
-                password,
-                email_confirm: true, // Bei lokaler Entwicklung: keine Email-Bestätigung nötig
-            });
-
-        if (authError) throw authError;
-
         // 2. Client-Eintrag erstellen
-        const { data: clientData, error: clientError } = await supabaseAdmin
+        const clientData = {
+            auth_id: authData.user?.id,
+            user_name: userName || email.split("@")[0],
+            email: email,
+            first_name: firstName || null,
+            last_name: lastName || null,
+            gender: gender || null,
+            role: role,
+            is_active: true,
+        };
+
+        console.log("Creating client record");
+
+        // Prüfe, ob der Benutzer wirklich erstellt wurde
+        if (!authData.user?.id) {
+            console.error("No user ID returned from auth");
+            return new Response(
+                JSON.stringify({
+                    success: false,
+                    error:
+                        "User wurde erstellt, aber keine Benutzer-ID wurde zurückgegeben",
+                    meta: {
+                        timestamp: new Date().toISOString(),
+                        operation: "user_creation",
+                    },
+                }),
+                {
+                    status: 400,
+                    headers: {
+                        ...corsHeaders,
+                        "Content-Type": "application/json",
+                    },
+                },
+            );
+        }
+
+        const { data: insertedClient, error: clientError } = await supabaseAdmin
             .from("clients")
-            .insert({
-                auth_id: authData.user.id,
-                user_name: userName || email.split("@")[0],
-                email: email,
-                first_name: firstName || null,
-                last_name: lastName || null,
-                gender: gender || null,
-                role: role,
-                is_active: true,
-            })
+            .insert(clientData)
             .select()
             .single();
 
-        if (clientError) throw clientError;
+        if (clientError) {
+            console.error("Client insert error:", clientError);
+            return new Response(
+                JSON.stringify({
+                    success: false,
+                    error: clientError.message,
+                    meta: {
+                        timestamp: new Date().toISOString(),
+                        operation: "user_creation",
+                    },
+                }),
+                {
+                    status: 400,
+                    headers: {
+                        ...corsHeaders,
+                        "Content-Type": "application/json",
+                    },
+                },
+            );
+        }
+
+        console.log("Client created successfully");
 
         // Erfolgreiche Antwort
         return new Response(
             JSON.stringify({
                 success: true,
-                user: authData.user,
-                client: clientData,
+                data: {
+                    user: authData.user,
+                    client: insertedClient,
+                },
+                meta: {
+                    timestamp: new Date().toISOString(),
+                    operation: "user_creation",
+                },
             }),
             {
-                headers: { "Content-Type": "application/json" },
                 status: 201,
+                headers: {
+                    ...corsHeaders,
+                    "Content-Type": "application/json",
+                },
             },
         );
     } catch (error: unknown) {
+        console.error(
+            "Function error:",
+            error instanceof Error ? error.message : String(error),
+        );
+
+        // Fehlerantwort
         return new Response(
             JSON.stringify({
                 success: false,
-                error: error instanceof Error ? error.message : "Unbekannter Fehler",
+                error: error instanceof Error
+                    ? error.message
+                    : "Unbekannter Fehler",
+                meta: {
+                    timestamp: new Date().toISOString(),
+                    operation: "user_creation",
+                },
             }),
             {
-                headers: { "Content-Type": "application/json" },
                 status: 400,
+                headers: {
+                    ...corsHeaders,
+                    "Content-Type": "application/json",
+                },
             },
         );
     }

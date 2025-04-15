@@ -3,10 +3,10 @@ import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { SmtpClient } from "https://deno.land/x/smtp/mod.ts";
 
 const SMTP_CONFIG = {
-    hostname: Deno.env.get("SMTP_HOST") || '',
-    port: Number(Deno.env.get("SMTP_PORT") || '587'),
-    username: Deno.env.get("SMTP_USER") || '',
-    password: Deno.env.get("SMTP_PASSWORD") || ''
+    hostname: Deno.env.get("SMTP_HOST") || "",
+    port: Number(Deno.env.get("SMTP_PORT") || "587"),
+    username: Deno.env.get("SMTP_USER") || "",
+    password: Deno.env.get("SMTP_PASSWORD") || "",
 };
 
 serve(async (req) => {
@@ -37,19 +37,24 @@ serve(async (req) => {
 
         await client.close();
 
-        return new Response(JSON.stringify({ status: "success" }), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-        });
+        return new Response(
+            JSON.stringify({ status: "success" }),
+            {
+                headers: { "Content-Type": "application/json" },
+                status: 200,
+            },
+        );
     } catch (error: unknown) {
         return new Response(
             JSON.stringify({
                 status: "error",
-                message: error instanceof Error ? error.message : "Unbekannter Fehler",
+                message: error instanceof Error
+                    ? error.message
+                    : "Unbekannter Fehler",
             }),
             {
-                status: 400,
                 headers: { "Content-Type": "application/json" },
+                status: 500,
             },
         );
     }

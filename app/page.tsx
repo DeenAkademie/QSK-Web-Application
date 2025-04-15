@@ -1,16 +1,41 @@
-import Hero from "@/components/hero";
-import ConnectSupabaseSteps from "@/components/tutorial/connect-supabase-steps";
-import SignUpUserSteps from "@/components/tutorial/sign-up-user-steps";
-import { hasEnvVars } from "@/utils/supabase/check-env-vars";
+'use client';
 
-export default async function Home() {
+// import { UserProgressWidget } from '@/components/user-progress-widget';
+import { ProfileSidebar } from '@/components/profile-sidebar';
+
+// import { WeeklyProgress } from '@/components/weekly-progress';
+// import { CurrentLesson } from '@/components/current-lesson';
+
+export default function Home() {
   return (
-    <>
-      <Hero />
-      <main className="flex-1 flex flex-col gap-6 px-4">
-        <h2 className="font-medium text-xl mb-4">Next steps</h2>
-        {hasEnvVars ? <SignUpUserSteps /> : <ConnectSupabaseSteps />}
-      </main>
-    </>
+    <div className='flex flex-col md:flex-row'>
+      {/* Hauptinhalt */}
+      <div className='flex-1 p-6'>
+        <div className='flex justify-between items-center mb-6'>
+          <div>
+            <h1 className='text-2xl font-bold mb-1'>Dashboard</h1>
+            <p className='text-gray-500'>
+              Ein Überblick über die vergangene Woche.
+            </p>
+          </div>
+        </div>
+
+        {/* Aktuelle Lektion */}
+        {/* <CurrentLesson /> */}
+
+        {/* Fortschritts-Widget */}
+        <div className='bg-[#4AA4DE] text-white p-3 rounded-t-lg'>
+          Dein Fortschritt
+        </div>
+        <div className='border border-gray-200 rounded-b-lg p-4 mb-6'>
+          {/* <UserProgressWidget /> */}
+        </div>
+
+        {/* Erfolge der letzten Woche */}
+        {/* <WeeklyProgress /> */}
+      </div>
+
+      <ProfileSidebar />
+    </div>
   );
 }
