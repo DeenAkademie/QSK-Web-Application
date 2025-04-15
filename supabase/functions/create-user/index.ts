@@ -5,7 +5,7 @@ import { corsHeaders, handleCors } from "../cors.ts";
 
 // Hilfsfunktion, um den Autorisierungstoken aus dem Header zu extrahieren
 function getAuthToken(req: Request): string | null {
-    const authHeader = req.headers.get('authorization');
+    const authHeader = req.headers.get("authorization");
     if (!authHeader) {
         return null;
     }
@@ -19,14 +19,14 @@ function getAuthToken(req: Request): string | null {
 
 serve(async (req) => {
     console.log("Received request to create-user function");
-    
+
     // CORS Preflight-Anfragen behandeln
     const corsResponse = handleCors(req);
     if (corsResponse) {
         console.log("Responding to CORS preflight request");
         return corsResponse;
     }
-    
+
     // Auth-Token aus Header extrahieren
     const token = getAuthToken(req);
     if (!token) {
@@ -37,16 +37,16 @@ serve(async (req) => {
                 error: "Authorization header missing",
                 meta: {
                     timestamp: new Date().toISOString(),
-                    operation: "user_creation"
-                }
+                    operation: "user_creation",
+                },
             }),
-            { 
-                status: 401, 
-                headers: { 
+            {
+                status: 401,
+                headers: {
                     ...corsHeaders,
-                    "Content-Type": "application/json" 
-                } 
-            }
+                    "Content-Type": "application/json",
+                },
+            },
         );
     }
 
@@ -63,6 +63,7 @@ serve(async (req) => {
             lastName,
             gender,
             role = "user",
+            plan_id = "quran-lesehack",
         } = reqBody;
 
         console.log("Processing registration for:", email);
@@ -86,6 +87,7 @@ serve(async (req) => {
                         lastName: lastName || null,
                         gender: gender || null,
                         role: role,
+                        plan_id: plan_id,
                     },
                 },
             },
@@ -128,6 +130,7 @@ serve(async (req) => {
             last_name: lastName || null,
             gender: gender || null,
             role: role,
+            plan_id: plan_id,
             is_active: true,
         };
 

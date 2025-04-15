@@ -72,7 +72,7 @@ CREATE TABLE IF NOT EXISTS "public"."clients" (
     "role" "text",
     "is_active" boolean DEFAULT true,
     "updated_at" timestamp with time zone DEFAULT "now"(),
-    "plan_id" "uuid"
+    "plan_id" character varying
 );
 
 
@@ -190,7 +190,7 @@ ALTER TABLE "public"."course_modules" ALTER COLUMN "display_order" ADD GENERATED
 
 
 CREATE TABLE IF NOT EXISTS "public"."plans" (
-    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "id" character varying NOT NULL,
     "title" "text" NOT NULL,
     "description" "text",
     "price" numeric,
