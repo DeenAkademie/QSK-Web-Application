@@ -1,8 +1,7 @@
 "use server";
 
 import { encodedRedirect } from "@/utils/utils";
-import { createClient } from "@/utils/supabase/server";
-import { headers } from "next/headers";
+import { createAdminClient, createClient } from "@/utils/supabase/server";
 import { redirect } from "next/navigation";
 
 // Interface für die standardisierte API-Antwort
@@ -38,7 +37,8 @@ export const signUpAction = async (formData: FormData) => {
     // Erstelle Supabase-Client für Auth-Token
     const supabase = await createClient();
     const { data: { session } } = await supabase.auth.getSession();
-    const authToken = session?.access_token || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    const authToken = session?.access_token ||
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
     if (!authToken) {
       console.error("Kein Auth-Token verfügbar für Edge-Function-Aufruf");
@@ -62,7 +62,10 @@ export const signUpAction = async (formData: FormData) => {
       role: "user",
     };
 
-    console.log("Rufe Edge Function auf:", `${SUPABASE_FUNCTIONS_URL}/create-user`);
+    console.log(
+      "Rufe Edge Function auf:",
+      `${SUPABASE_FUNCTIONS_URL}/create-user`,
+    );
 
     try {
       // Rufe die Edge Function auf MIT Authorization-Header
@@ -76,16 +79,17 @@ export const signUpAction = async (formData: FormData) => {
       });
 
       console.log("Response Status:", response.status);
-      
+
       // Parse die JSON-Antwort
       const responseData = await response.json() as ApiResponse;
-      
+
       // Einfacher Check ob Success true ist
       if (responseData.success) {
         return {
           success: true,
           data: {
-            message: "Vielen Dank für Ihre Registrierung! Bitte überprüfen Sie Ihre E-Mail für einen Bestätigungslink.",
+            message:
+              "Vielen Dank für Ihre Registrierung! Bitte überprüfen Sie Ihre E-Mail für einen Bestätigungslink.",
             user: responseData.data?.user,
             client: responseData.data?.client,
           },
@@ -105,7 +109,7 @@ export const signUpAction = async (formData: FormData) => {
       }
     } catch (edgeError) {
       console.error("Edge Function Fehler:", edgeError);
-      
+
       // Fallback zur direkten Supabase Auth API
       const { data, error } = await supabase.auth.signUp({
         email,
@@ -120,7 +124,7 @@ export const signUpAction = async (formData: FormData) => {
           },
         },
       });
-      
+
       if (error) {
         return {
           success: false,
@@ -130,11 +134,12 @@ export const signUpAction = async (formData: FormData) => {
           },
         };
       }
-      
+
       return {
         success: true,
         data: {
-          message: "Vielen Dank für Ihre Registrierung! Bitte überprüfen Sie Ihre E-Mail für einen Bestätigungslink.",
+          message:
+            "Vielen Dank für Ihre Registrierung! Bitte überprüfen Sie Ihre E-Mail für einen Bestätigungslink.",
           user: data.user,
         },
         meta: {
@@ -146,7 +151,9 @@ export const signUpAction = async (formData: FormData) => {
     console.error("SignUp Error:", error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : "Registrierung fehlgeschlagen",
+      error: error instanceof Error
+        ? error.message
+        : "Registrierung fehlgeschlagen",
       meta: {
         timestamp: new Date().toISOString(),
       },
@@ -169,7 +176,7 @@ export const signInAction = async (formData: FormData) => {
     if (error) {
       // Benutzerfreundlichere Fehlermeldungen
       let errorMessage = "Bei der Anmeldung ist ein Fehler aufgetreten.";
-      
+
       switch (error.message) {
         case "Invalid login credentials":
         case "Invalid email or password":
@@ -182,37 +189,40 @@ export const signInAction = async (formData: FormData) => {
           errorMessage = "Es existiert kein Konto mit dieser E-Mail-Adresse.";
           break;
         case "Too many requests":
-          errorMessage = "Zu viele Anmeldeversuche. Bitte versuchen Sie es später erneut.";
+          errorMessage =
+            "Zu viele Anmeldeversuche. Bitte versuchen Sie es später erneut.";
           break;
         default:
           errorMessage = error.message;
           break;
       }
-      
+
       return { success: false, error: errorMessage };
     }
 
     // Überprüfen, ob die Sitzung wirklich erstellt wurde
     if (!data.session) {
-      return { 
-        success: false, 
-        error: "Die Anmeldung war erfolgreich, aber die Sitzung konnte nicht erstellt werden. Bitte versuchen Sie es erneut." 
+      return {
+        success: false,
+        error:
+          "Die Anmeldung war erfolgreich, aber die Sitzung konnte nicht erstellt werden. Bitte versuchen Sie es erneut.",
       };
     }
-    
+
     console.log("Anmeldung erfolgreich", {
-      user: data.user?.email, 
+      user: data.user?.email,
       session: data.session ? "vorhanden" : "fehlt",
-      sessionExpiry: data.session?.expires_at
+      sessionExpiry: data.session?.expires_at,
     });
 
     // Bei erfolgreicher Anmeldung
     return { success: true, redirectTo: "/" };
   } catch (unexpectedError) {
     console.error("Unerwarteter Fehler bei der Anmeldung:", unexpectedError);
-    return { 
-      success: false, 
-      error: "Ein unerwarteter Fehler ist aufgetreten. Bitte versuchen Sie es später erneut."
+    return {
+      success: false,
+      error:
+        "Ein unerwarteter Fehler ist aufgetreten. Bitte versuchen Sie es später erneut.",
     };
   }
 };
@@ -291,20 +301,177 @@ export const resetPasswordAction = async (formData: FormData) => {
 
 export const signOutAction = async () => {
   const supabase = await createClient();
-  
+
   try {
     // Sitzung beenden
-    const { error } = await supabase.auth.signOut({ scope: 'global' });
-    
+    const { error } = await supabase.auth.signOut({ scope: "global" });
+
     if (error) {
-      console.error('Fehler beim Abmelden:', error);
+      console.error("Fehler beim Abmelden:", error);
       return { success: false, error: error.message };
     }
-    
+
     // Erfolgreiche Abmeldung
     return { success: true, redirectTo: "/sign-in" };
   } catch (err) {
-    console.error('Unerwarteter Fehler beim Abmelden:', err);
-    return { success: false, error: 'Ein Fehler ist aufgetreten.' };
+    console.error("Unerwarteter Fehler beim Abmelden:", err);
+    return { success: false, error: "Ein Fehler ist aufgetreten." };
   }
 };
+
+/**
+ * Profil-Datenstrukturen
+ */
+interface ProfileData {
+  client: {
+    auth_id: string;
+    user_name: string;
+    email: string;
+    first_name?: string | null;
+    last_name?: string | null;
+    gender?: string | null;
+    role?: string;
+    is_active?: boolean;
+    updated_at?: string;
+    plan_id?: string;
+  } | null;
+  plan: any | null;
+  lesson_state: any | null;
+  clients_settings: any | null;
+  user: {
+    id: string;
+    email?: string;
+    created_at?: string;
+  };
+}
+
+/**
+ * Lädt oder erstellt Profildaten für den angemeldeten Benutzer
+ * Diese serverseitige Action umgeht die RLS-Beschränkungen
+ */
+export async function getProfileAction(): Promise<ProfileData> {
+  const supabase = await createAdminClient();
+  console.log("adminClient", supabase);
+  console.log(
+    "NEXT_PUBLIC_SUPABASE_URL:",
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+  );
+  console.log(
+    "Service Role Key vorhanden:",
+    !!process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY,
+  );
+
+  // Aktuelle Session prüfen mit getUser() für sicherere Authentifizierung
+  const { data: userData } = await supabase.auth.getUser();
+  console.log("userData vollständig:", userData);
+
+  if (!userData.user) {
+    return {
+      client: null,
+      plan: null,
+      lesson_state: null,
+      clients_settings: null,
+      user: { id: "" },
+    };
+  }
+
+  const userId = userData.user.id;
+  // 1. Versuche Client zu laden
+  console.log("userId", userId);
+  console.log("Führe Abfrage mit auth_id =", userId, "durch");
+
+  let { data: clientData, error: clientError } = await supabase
+    .from("clients")
+    .select("*")
+    .eq("client_id", userId)
+    .single();
+
+  console.log("clientData", clientData);
+  console.log("clientError:", clientError);
+
+  // 2. Plan-Daten laden, falls vorhanden
+  let planData = null;
+  if (clientData?.plan_id) {
+    const { data: plan } = await supabase
+      .from("plans")
+      .select("*")
+      .eq("id", clientData.plan_id)
+      .single();
+
+    planData = plan;
+  }
+
+  // 3. Lesson-State laden
+  const { data: lessonState } = await supabase
+    .from("clients_lesson_state")
+    .select("*")
+    .eq("client_id", userId)
+    .single();
+
+  // 4. Client-Settings laden
+  let { data: clientsSettings, error: clientsSettingsError } = await supabase
+    .from("clients_settings")
+    .select("*")
+    .eq("client_id", userId)
+    .single();
+
+  // Vollständige Daten zurückgeben
+  return {
+    client: clientData,
+    plan: planData,
+    lesson_state: lessonState,
+    clients_settings: clientsSettings,
+    user: {
+      id: userId,
+      email: userData.user.email,
+      created_at: userData.user.created_at,
+    },
+  };
+}
+
+// Neue Helper-Funktion zum Löschen von Benutzern mit dem Admin-Client
+export async function deleteUserAction(
+  userId: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = await createAdminClient();
+
+    // 1. Versuche, den Benutzer aus der auth.users-Tabelle zu löschen
+    const { error: authDeleteError } = await supabase.auth.admin.deleteUser(
+      userId,
+    );
+
+    if (authDeleteError) {
+      console.error("Fehler beim Löschen des Benutzers:", authDeleteError);
+
+      // 2. Fallback: Wenn direktes Löschen nicht klappt, Benutzer deaktivieren
+      const { error: updateError } = await supabase
+        .from("clients")
+        .update({ is_active: false })
+        .eq("auth_id", userId);
+
+      if (updateError) {
+        return {
+          success: false,
+          error:
+            `Benutzer konnte weder gelöscht noch deaktiviert werden: ${authDeleteError.message}`,
+        };
+      }
+
+      return {
+        success: true,
+        error:
+          `Benutzer konnte nicht gelöscht werden, wurde aber deaktiviert: ${authDeleteError.message}`,
+      };
+    }
+
+    return { success: true };
+  } catch (e) {
+    return {
+      success: false,
+      error: e instanceof Error
+        ? e.message
+        : "Unbekannter Fehler beim Löschen des Benutzers",
+    };
+  }
+}

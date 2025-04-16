@@ -57,7 +57,7 @@ export function LeftSidebar({ className }: LeftSidebarProps) {
 
   // Menüpunkte definieren
   const publicMenuItems: MenuItem[] = [
-    // { href: '/', label: 'Startseite', icon: <Home className='h-5 w-5' /> },
+    { href: '/', label: 'Startseite', icon: <Home className='h-5 w-5' /> },
     { href: '/about', label: 'Über uns', icon: <Info className='h-5 w-5' /> },
   ];
 

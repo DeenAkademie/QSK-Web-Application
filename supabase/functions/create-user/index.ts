@@ -123,7 +123,7 @@ serve(async (req) => {
 
         // 2. Client-Eintrag erstellen
         const clientData = {
-            auth_id: authData.user?.id,
+            client_id: authData.user?.id,
             user_name: userName || email.split("@")[0],
             email: email,
             first_name: firstName || null,
@@ -167,10 +167,40 @@ serve(async (req) => {
 
         if (clientError) {
             console.error("Client insert error:", clientError);
+
+            try {
+                // Stelle sicher, dass du einen Admin-Client mit Service Role Key erstellst
+
+                const adminSupabase = createClient(
+                    Deno.env.get("SUPABASE_URL") || "",
+                    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "",
+                    {
+                        auth: {
+                            autoRefreshToken: false,
+                            persistSession: false,
+                        },
+                    },
+                );
+
+                const { error: deleteError } = await adminSupabase.auth.admin
+                    .deleteUser(
+                        authData.user.id,
+                    );
+
+                if (deleteError) {
+                    console.error("Error deleting user:", deleteError);
+                    // Trotz Fehler beim Löschen, Fehlerantwort senden
+                }
+                console.log("User deleted successfully");
+            } catch (deleteUserError) {
+                console.error("Failed to delete user:", deleteUserError);
+            }
+
+            // Fehlerantwort senden
             return new Response(
                 JSON.stringify({
                     success: false,
-                    error: clientError.message,
+                    error: `Benutzer konnte nicht erstellt werden!`,
                     meta: {
                         timestamp: new Date().toISOString(),
                         operation: "user_creation",
@@ -186,6 +216,55 @@ serve(async (req) => {
             );
         }
 
+        // Erstelle einen Eintrag in der clients_lesson_state Tabelle
+        console.log("Creating lesson state entry for user:", authData.user.id);
+
+        const { data: lessonState, error: lessonStateError } =
+            await supabaseAdmin
+                .from("clients_lesson_state")
+                .insert({
+                    client_id: authData.user.id,
+                    // Alle anderen Felder haben Default-Werte in der Datenbank
+                })
+                .select()
+                .single();
+
+        if (lessonStateError) {
+            console.error("Lesson state creation error:", lessonStateError);
+            // Wir geben trotzdem eine erfolgreiche Antwort, da der Client erstellt wurde
+            // und ein fehlender Lesson State weniger kritisch ist
+        } else {
+            console.log("Lesson state created successfully");
+        }
+
+        console.log("Creating lesson state entry for user:", authData.user.id);
+
+        const { data: settingsState, error: settingsStateError } =
+            await supabaseAdmin
+                .from("clients_settings")
+                .insert({
+                    client_id: authData.user.id,
+                    language: "de",
+                    notification_live_call: true,
+                    notification_learn_reminders: true,
+                    notification_feature_updates: true,
+                    // notification_newsletter: true,
+                    // Alle anderen Felder haben Default-Werte in der Datenbank
+                })
+                .select()
+                .single();
+
+        if (settingsStateError) {
+            console.error(
+                "client_settings creation error:",
+                settingsStateError,
+            );
+            // Wir geben trotzdem eine erfolgreiche Antwort, da der Client erstellt wurde
+            // und ein fehlender client_settings weniger kritisch ist
+        } else {
+            console.log("client_settings created successfully");
+        }
+
         console.log("Client created successfully");
 
         // Erfolgreiche Antwort
@@ -195,6 +274,8 @@ serve(async (req) => {
                 data: {
                     user: authData.user,
                     client: insertedClient,
+                    lesson_state: lessonState || null,
+                    settings_state: settingsState || null,
                 },
                 meta: {
                     timestamp: new Date().toISOString(),

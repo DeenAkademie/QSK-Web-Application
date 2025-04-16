@@ -68,7 +68,7 @@ serve(async (req) => {
         // 2. Prüfen, ob Benutzer bereits existiert
         const { data: existingUser, error: userError } = await supabaseAdmin
             .from("clients")
-            .select("auth_id")
+            .select("client_id")
             .eq("email", customer_email)
             .maybeSingle();
 
@@ -85,14 +85,14 @@ serve(async (req) => {
                     // copecart_order_id: order_id,
                     // copecart_subscription_id: subscription_id
                 })
-                .eq("auth_id", existingUser.auth_id);
+                .eq("client_id", existingUser.client_id);
 
             if (updateError) throw updateError;
 
             return corsJsonResponse({
                 status: "success",
                 action: "updated",
-                user_id: existingUser.auth_id,
+                user_id: existingUser.client_id,
             });
         } else {
             // Neuen Benutzer erstellen
@@ -114,7 +114,7 @@ serve(async (req) => {
             const { data: clientData, error: clientError } = await supabaseAdmin
                 .from("clients")
                 .insert({
-                    auth_id: authData.user.id,
+                    client_id: authData.user.id,
                     user_name: customer_email.split("@")[0],
                     email: customer_email,
                     is_active: true,

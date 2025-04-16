@@ -1,35 +1,68 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useRouter } from 'next/navigation';
-import type { User } from '@supabase/supabase-js';
+import { createClient } from '@/utils/supabase/client';
+import { getProfileAction } from '@/app/actions';
+import { User } from '@supabase/supabase-js';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 interface ProfileData {
   user_name: string;
   first_name: string;
   last_name: string;
   gender: string;
+  email: string;
+}
+
+interface ClientsSettings {
+  id?: string;
+  client_id: string;
+  language: string;
+  notification_live_call: boolean;
+  notification_learn_reminders: boolean;
+  notification_feature_updates: boolean;
 }
 
 export default function Profile() {
   const router = useRouter();
-  const supabase = createClientComponentClient();
+  const supabase = createClient();
   const [loading, setLoading] = useState(true);
   const [profileLoading, setProfileLoading] = useState(false);
   const [passwordLoading, setPasswordLoading] = useState(false);
+  const [settingsLoading, setSettingsLoading] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [profileData, setProfileData] = useState<ProfileData>({
     user_name: '',
     first_name: '',
     last_name: '',
     gender: '',
+    email: '',
+  });
+  const [clientsSettings, setClientsSettings] = useState<ClientsSettings>({
+    client_id: '',
+    language: 'de',
+    notification_live_call: true,
+    notification_learn_reminders: true,
+    notification_feature_updates: true,
   });
   const [passwordData, setPasswordData] = useState({
     password: '',
     confirmPassword: '',
   });
-  const [activeTab, setActiveTab] = useState('profile'); // 'profile' oder 'password'
+  const [activeTab, setActiveTab] = useState('profile');
   const [message, setMessage] = useState<{ type: string; text: string }>({
     type: '',
     text: '',
@@ -37,42 +70,73 @@ export default function Profile() {
 
   useEffect(() => {
     const fetchProfile = async () => {
-      const { data: userData, error: userError } =
-        await supabase.auth.getUser();
+      try {
+        // Server Action für Profildaten verwenden
+        const profileDataResponse = await getProfileAction();
 
-      if (userError || !userData.user) {
-        router.push('/sign-in');
-        return;
-      }
+        if (!profileDataResponse.user.id) {
+          router.push('/sign-in');
+          return;
+        }
 
-      setUser(userData.user);
+        setUser({
+          id: profileDataResponse.user.id,
+          email: profileDataResponse.user.email || '',
+          created_at: profileDataResponse.user.created_at || '',
+        } as User);
 
-      const { data: clientData, error: clientError } = await supabase
-        .from('clients')
-        .select('user_name, first_name, last_name, gender')
-        .eq('auth_id', userData.user.id)
-        .single();
+        // Profildaten aus dem Client-Objekt extrahieren
+        if (profileDataResponse.client) {
+          setProfileData({
+            user_name: profileDataResponse.client.user_name || '',
+            first_name: profileDataResponse.client.first_name || '',
+            last_name: profileDataResponse.client.last_name || '',
+            gender: profileDataResponse.client.gender || '',
+            email: profileDataResponse.client.email || '',
+          });
 
-      if (!clientError && clientData) {
-        setProfileData({
-          user_name: clientData.user_name || '',
-          first_name: clientData.first_name || '',
-          last_name: clientData.last_name || '',
-          gender: clientData.gender || '',
+          if (profileDataResponse.clients_settings) {
+            setClientsSettings({
+              ...clientsSettings,
+              ...profileDataResponse.clients_settings,
+              client_id: profileDataResponse.user.id,
+            });
+          } else {
+            // Defaults setzen mit der user ID, falls keine Settings existieren
+            setClientsSettings({
+              ...clientsSettings,
+              client_id: profileDataResponse.user.id,
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Fehler beim Laden des Profils:', error);
+        setMessage({
+          type: 'error',
+          text: 'Profildaten konnten nicht geladen werden.',
         });
+      } finally {
+        setLoading(false);
       }
-
-      setLoading(false);
     };
 
     fetchProfile();
-  }, [router, supabase]);
+  }, [router]);
 
   const handleProfileChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
   ) => {
     const { id, value } = e.target;
     setProfileData((prev) => ({ ...prev, [id]: value }));
+  };
+
+  const handleSettingsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { id, type, checked } = e.target;
+
+    setClientsSettings((prev) => ({
+      ...prev,
+      [id]: type === 'checkbox' ? checked : e.target.value,
+    }));
   };
 
   const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -97,7 +161,7 @@ export default function Profile() {
           last_name: profileData.last_name,
           gender: profileData.gender,
         })
-        .eq('auth_id', user.id);
+        .eq('client_id', user.id);
 
       if (error) throw error;
 
@@ -114,6 +178,51 @@ export default function Profile() {
       });
     } finally {
       setProfileLoading(false);
+    }
+  };
+
+  const handleSettingsSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSettingsLoading(true);
+
+    try {
+      if (!user) {
+        throw new Error('Kein Benutzer angemeldet');
+      }
+
+      // Wenn eine ID existiert, update verwenden, sonst insert
+      if (clientsSettings.id) {
+        const { error } = await supabase
+          .from('clients_settings')
+          .update({
+            language: clientsSettings.language,
+            notification_live_call: clientsSettings.notification_live_call,
+            notification_learn_reminders:
+              clientsSettings.notification_learn_reminders,
+            notification_feature_updates:
+              clientsSettings.notification_feature_updates,
+          })
+          .eq('id', clientsSettings.id);
+
+        if (error) throw error;
+      }
+
+      setMessage({
+        type: 'success',
+        text: 'Einstellungen erfolgreich aktualisiert!',
+      });
+      setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+    } catch (error: unknown) {
+      console.error('Fehler beim Aktualisieren der Einstellungen:', error);
+      setMessage({
+        type: 'error',
+        text:
+          error instanceof Error
+            ? error.message
+            : 'Ein Fehler ist aufgetreten.',
+      });
+    } finally {
+      setSettingsLoading(false);
     }
   };
 
@@ -173,189 +282,248 @@ export default function Profile() {
       <h1 className='text-3xl font-bold mb-8'>Profil</h1>
 
       {message.text && (
-        <div
-          className={`p-4 rounded-md mb-6 ${
-            message.type === 'success'
-              ? 'bg-green-100 text-green-700'
-              : 'bg-red-100 text-red-700'
-          }`}
+        <Alert
+          className={`mb-6 ${message.type === 'success' ? 'bg-green-50 text-green-800 border-green-200' : 'bg-red-50 text-red-800 border-red-200'}`}
         >
-          {message.text}
-        </div>
+          <AlertDescription>{message.text}</AlertDescription>
+        </Alert>
       )}
 
-      {/* Tabs */}
-      <div className='flex border-b mb-8'>
-        <button
-          onClick={() => setActiveTab('profile')}
-          className={`px-4 py-2 font-medium ${
-            activeTab === 'profile'
-              ? 'border-b-2 border-blue-500 text-blue-600'
-              : 'text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          Profildaten
-        </button>
-        <button
-          onClick={() => setActiveTab('password')}
-          className={`px-4 py-2 font-medium ${
-            activeTab === 'password'
-              ? 'border-b-2 border-blue-500 text-blue-600'
-              : 'text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          Passwort ändern
-        </button>
-      </div>
+      <Tabs
+        defaultValue='profile'
+        value={activeTab}
+        onValueChange={setActiveTab}
+        className='w-full'
+      >
+        <TabsList className='grid w-full grid-cols-3 mb-8'>
+          <TabsTrigger value='profile'>Profildaten</TabsTrigger>
+          <TabsTrigger value='settings'>Einstellungen</TabsTrigger>
+          <TabsTrigger value='password'>Passwort ändern</TabsTrigger>
+        </TabsList>
 
-      {/* Profil-Tab */}
-      {activeTab === 'profile' && (
-        <form onSubmit={handleProfileSubmit} className='space-y-6'>
-          <div>
-            <label
-              htmlFor='user_name'
-              className='block text-sm font-medium mb-1'
-            >
-              Benutzername
-            </label>
-            <input
-              id='user_name'
-              type='text'
-              value={profileData.user_name}
-              onChange={handleProfileChange}
-              className='block w-full rounded-md border border-gray-300 py-2 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500'
-            />
-          </div>
-
-          <div className='grid grid-cols-1 md:grid-cols-2 gap-6'>
-            <div>
-              <label
-                htmlFor='first_name'
-                className='block text-sm font-medium mb-1'
-              >
-                Vorname
-              </label>
-              <input
-                id='first_name'
-                type='text'
-                value={profileData.first_name}
+        <TabsContent value='profile'>
+          <form onSubmit={handleProfileSubmit} className='space-y-6'>
+            <div className='space-y-2'>
+              <Label htmlFor='user_name'>Benutzername</Label>
+              <Input
+                id='user_name'
+                value={profileData.user_name}
                 onChange={handleProfileChange}
-                className='block w-full rounded-md border border-gray-300 py-2 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500'
               />
             </div>
 
-            <div>
-              <label
-                htmlFor='last_name'
-                className='block text-sm font-medium mb-1'
+            <div className='space-y-2'>
+              <Label htmlFor='email'>E-Mail</Label>
+              <Input
+                id='email'
+                type='email'
+                value={profileData.email}
+                disabled
+                className='bg-muted'
+              />
+              <p className='text-xs text-muted-foreground'>
+                E-Mail kann nicht geändert werden
+              </p>
+            </div>
+
+            <div className='grid grid-cols-1 md:grid-cols-2 gap-6'>
+              <div className='space-y-2'>
+                <Label htmlFor='first_name'>Vorname</Label>
+                <Input
+                  id='first_name'
+                  value={profileData.first_name}
+                  onChange={handleProfileChange}
+                />
+              </div>
+
+              <div className='space-y-2'>
+                <Label htmlFor='last_name'>Nachname</Label>
+                <Input
+                  id='last_name'
+                  value={profileData.last_name}
+                  onChange={handleProfileChange}
+                />
+              </div>
+            </div>
+
+            <div className='space-y-2'>
+              <Label htmlFor='gender'>Geschlecht</Label>
+              <Select
+                value={profileData.gender || undefined}
+                onValueChange={(value) =>
+                  setProfileData((prev) => ({ ...prev, gender: value }))
+                }
               >
-                Nachname
-              </label>
-              <input
-                id='last_name'
-                type='text'
-                value={profileData.last_name}
-                onChange={handleProfileChange}
-                className='block w-full rounded-md border border-gray-300 py-2 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500'
+                <SelectTrigger id='gender'>
+                  <SelectValue placeholder='Bitte wählen' />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value='none'>Bitte wählen</SelectItem>
+                  <SelectItem value='male'>Männlich</SelectItem>
+                  <SelectItem value='female'>Weiblich</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className='flex items-center justify-between pt-4'>
+              <Button
+                type='button'
+                variant='outline'
+                onClick={() => router.push('/')}
+              >
+                Zurück zum Dashboard
+              </Button>
+
+              <Button type='submit' disabled={profileLoading}>
+                {profileLoading ? 'Speichert...' : 'Profil speichern'}
+              </Button>
+            </div>
+          </form>
+        </TabsContent>
+
+        <TabsContent value='settings'>
+          <form onSubmit={handleSettingsSubmit} className='space-y-6'>
+            <div className='space-y-2'>
+              <Label htmlFor='language'>Sprache</Label>
+              <Select
+                value={clientsSettings.language}
+                onValueChange={(value) =>
+                  setClientsSettings((prev) => ({ ...prev, language: value }))
+                }
+              >
+                <SelectTrigger id='language'>
+                  <SelectValue placeholder='Sprache wählen' />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value='de'>Deutsch</SelectItem>
+                  <SelectItem value='en'>Englisch</SelectItem>
+                  <SelectItem value='tr'>Türkisch</SelectItem>
+                  <SelectItem value='ar'>Arabisch</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className='space-y-4'>
+              <h3 className='font-medium'>Benachrichtigungen</h3>
+
+              <div className='flex items-center space-x-2'>
+                <Checkbox
+                  id='notification_live_call'
+                  checked={clientsSettings.notification_live_call}
+                  onCheckedChange={(checked) =>
+                    setClientsSettings((prev) => ({
+                      ...prev,
+                      notification_live_call: checked as boolean,
+                    }))
+                  }
+                />
+                <Label
+                  htmlFor='notification_live_call'
+                  className='cursor-pointer'
+                >
+                  Live-Anrufe und Veranstaltungen
+                </Label>
+              </div>
+
+              <div className='flex items-center space-x-2'>
+                <Checkbox
+                  id='notification_learn_reminders'
+                  checked={clientsSettings.notification_learn_reminders}
+                  onCheckedChange={(checked) =>
+                    setClientsSettings((prev) => ({
+                      ...prev,
+                      notification_learn_reminders: checked as boolean,
+                    }))
+                  }
+                />
+                <Label
+                  htmlFor='notification_learn_reminders'
+                  className='cursor-pointer'
+                >
+                  Lern-Erinnerungen
+                </Label>
+              </div>
+
+              <div className='flex items-center space-x-2'>
+                <Checkbox
+                  id='notification_feature_updates'
+                  checked={clientsSettings.notification_feature_updates}
+                  onCheckedChange={(checked) =>
+                    setClientsSettings((prev) => ({
+                      ...prev,
+                      notification_feature_updates: checked as boolean,
+                    }))
+                  }
+                />
+                <Label
+                  htmlFor='notification_feature_updates'
+                  className='cursor-pointer'
+                >
+                  Neue Funktionen und Updates
+                </Label>
+              </div>
+            </div>
+
+            <div className='flex items-center justify-between pt-4'>
+              <Button
+                type='button'
+                variant='outline'
+                onClick={() => router.push('/')}
+              >
+                Zurück zum Dashboard
+              </Button>
+
+              <Button type='submit' disabled={settingsLoading}>
+                {settingsLoading ? 'Speichert...' : 'Einstellungen speichern'}
+              </Button>
+            </div>
+          </form>
+        </TabsContent>
+
+        <TabsContent value='password'>
+          <form onSubmit={handlePasswordSubmit} className='space-y-6'>
+            <div className='space-y-2'>
+              <Label htmlFor='password'>Neues Passwort</Label>
+              <Input
+                id='password'
+                type='password'
+                value={passwordData.password}
+                onChange={handlePasswordChange}
+                minLength={6}
+                required
+              />
+              <p className='text-xs text-muted-foreground'>
+                Mindestens 6 Zeichen
+              </p>
+            </div>
+
+            <div className='space-y-2'>
+              <Label htmlFor='confirmPassword'>Passwort bestätigen</Label>
+              <Input
+                id='confirmPassword'
+                type='password'
+                value={passwordData.confirmPassword}
+                onChange={handlePasswordChange}
+                required
               />
             </div>
-          </div>
 
-          <div>
-            <label htmlFor='gender' className='block text-sm font-medium mb-1'>
-              Geschlecht
-            </label>
-            <select
-              id='gender'
-              value={profileData.gender}
-              onChange={handleProfileChange}
-              className='block w-full rounded-md border border-gray-300 py-2 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500'
-            >
-              <option value=''>Bitte wählen</option>
-              <option value='male'>Männlich</option>
-              <option value='female'>Weiblich</option>
-              <option value='diverse'>Divers</option>
-            </select>
-          </div>
+            <div className='flex items-center justify-between pt-4'>
+              <Button
+                type='button'
+                variant='outline'
+                onClick={() => router.push('/')}
+              >
+                Zurück zum Dashboard
+              </Button>
 
-          <div className='flex items-center justify-between pt-4'>
-            <button
-              type='button'
-              onClick={() => router.push('/dashboard')}
-              className='text-blue-600 hover:underline'
-            >
-              Zurück zum Dashboard
-            </button>
-
-            <button
-              type='submit'
-              disabled={profileLoading}
-              className='bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-6 rounded-md transition disabled:opacity-50'
-            >
-              {profileLoading ? 'Speichert...' : 'Profil speichern'}
-            </button>
-          </div>
-        </form>
-      )}
-
-      {/* Passwort-Tab */}
-      {activeTab === 'password' && (
-        <form onSubmit={handlePasswordSubmit} className='space-y-6'>
-          <div>
-            <label
-              htmlFor='password'
-              className='block text-sm font-medium mb-1'
-            >
-              Neues Passwort
-            </label>
-            <input
-              id='password'
-              type='password'
-              value={passwordData.password}
-              onChange={handlePasswordChange}
-              minLength={6}
-              required
-              className='block w-full rounded-md border border-gray-300 py-2 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500'
-            />
-            <p className='mt-1 text-xs text-gray-500'>Mindestens 6 Zeichen</p>
-          </div>
-
-          <div>
-            <label
-              htmlFor='confirmPassword'
-              className='block text-sm font-medium mb-1'
-            >
-              Passwort bestätigen
-            </label>
-            <input
-              id='confirmPassword'
-              type='password'
-              value={passwordData.confirmPassword}
-              onChange={handlePasswordChange}
-              required
-              className='block w-full rounded-md border border-gray-300 py-2 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500'
-            />
-          </div>
-
-          <div className='flex items-center justify-between pt-4'>
-            <button
-              type='button'
-              onClick={() => router.push('/dashboard')}
-              className='text-blue-600 hover:underline'
-            >
-              Zurück zum Dashboard
-            </button>
-
-            <button
-              type='submit'
-              disabled={passwordLoading}
-              className='bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-6 rounded-md transition disabled:opacity-50'
-            >
-              {passwordLoading ? 'Wird geändert...' : 'Passwort ändern'}
-            </button>
-          </div>
-        </form>
-      )}
+              <Button type='submit' disabled={passwordLoading}>
+                {passwordLoading ? 'Wird geändert...' : 'Passwort ändern'}
+              </Button>
+            </div>
+          </form>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

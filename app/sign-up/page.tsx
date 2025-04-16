@@ -182,7 +182,6 @@ export default function SignUp() {
                 <SelectContent>
                   <SelectItem value='male'>Männlich</SelectItem>
                   <SelectItem value='female'>Weiblich</SelectItem>
-                  <SelectItem value='diverse'>Divers</SelectItem>
                 </SelectContent>
               </Select>
             </div>

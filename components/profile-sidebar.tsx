@@ -1,9 +1,12 @@
+'use client';
+
 import Image from 'next/image';
 import Link from 'next/link';
-
 import { useEffect, useState } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { useAuth } from '@/context/auth-context';
+import { getProfileAction } from '@/app/actions';
+import { useRouter } from 'next/navigation';
 
 // Define the badge and plan types to avoid using 'any'
 interface Badge {
@@ -21,22 +24,21 @@ interface Plan {
   features: string[] | null;
 }
 
-interface UserProfileData {
-  id?: string;
-  auth_id?: string;
+interface ClientData {
+  auth_id: string;
   user_name: string;
-  email?: string;
-  first_name?: string;
-  last_name?: string;
-  gender?: string;
-  avatar_url?: string;
-  current_course?: string;
-  member_since?: string;
+  email: string;
+  first_name?: string | null;
+  last_name?: string | null;
+  gender?: string | null;
+  role?: string;
+  is_active?: boolean;
+  updated_at?: string;
   plan_id?: string;
   plan?: Plan;
 }
 
-interface LessonState {
+interface ClientLessonState {
   id?: string;
   user_id: string;
   current_lesson?: number;
@@ -46,230 +48,53 @@ interface LessonState {
   last_activity_date?: string;
 }
 
-// Extended profile with hasanat data
-interface ExtendedUserProfile extends Partial<UserProfileData> {
-  client_id?: string;
-  badges?: Badge[];
-  avatar?: string | null;
-  user_name: string;
-  did_set_password?: boolean;
-  first_name?: string;
-  last_name?: string;
-  email?: string;
-  gender?: string;
-  plan?: Plan;
-  hasanat_count?: number;
-  hasanat_today?: number;
-}
-
-// Funktion zum Abrufen der Benutzerprofildaten aus der Clients-Tabelle
-async function getUserProfileData(): Promise<ExtendedUserProfile> {
-  // Supabase-Client erstellen
-  const supabase = createClientComponentClient();
-
-  try {
-    // Aktuelle Benutzersession abrufen
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-
-    if (!session?.user) {
-      throw new Error('Nicht angemeldet');
-    }
-
-    // Benutzerdaten über Supabase REST-API abrufen
-    const { data: userData, error: userError } = await supabase.auth.getUser();
-
-    if (userError || !userData.user) {
-      throw userError || new Error('Benutzer nicht gefunden');
-    }
-
-    // Profile-Daten über Supabase-Auth API abrufen
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userData.user.id)
-      .single();
-
-    // Plan-Daten abrufen, falls vorhanden
-    let plan = null;
-    if (profile?.plan_id) {
-      const { data: planData } = await supabase
-        .from('plans')
-        .select('*')
-        .eq('id', profile.plan_id)
-        .single();
-      plan = planData;
-    }
-
-    // Member-Since-Datum formatieren oder Fallback verwenden
-    const memberSince = userData.user.created_at
-      ? new Date(userData.user.created_at).toLocaleDateString('de-DE', {
-          month: 'long',
-          year: 'numeric',
-        })
-      : new Date().toLocaleDateString('de-DE', {
-          month: 'long',
-          year: 'numeric',
-        });
-
-    // Daten in das erwartete Format transformieren
-    const profileData: ExtendedUserProfile = {
-      client_id: userData.user.id,
-      user_name:
-        profile?.user_name || userData.user.email?.split('@')[0] || 'User',
-      email: profile?.email || userData.user.email,
-      first_name: profile?.first_name,
-      last_name: profile?.last_name,
-      gender: profile?.gender,
-      avatar_url: profile?.avatar_url,
-      current_course: profile?.current_course || 'Quran LeseHack',
-      member_since: memberSince,
-      plan: plan,
-    };
-
-    return profileData;
-  } catch (error) {
-    console.error('Fehler in getUserProfileData:', error);
-    // Standardwerte zurückgeben, falls etwas schiefgeht
-    return {
-      user_name: 'Benutzer',
-      email: 'user@example.com',
-    };
-  }
-}
-
-// Funktion zum Abrufen des Lektionsstatus für Hasanat-Zähler
-async function getUserLessonState(): Promise<LessonState | null> {
-  // Supabase-Client erstellen
-  const supabase = createClientComponentClient();
-
-  try {
-    // Aktuelle Benutzersession abrufen
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-
-    if (!session?.user) {
-      throw new Error('Nicht angemeldet');
-    }
-
-    // Lektionsstatus direkt über Supabase abfragen
-    const { data: lessonState, error } = await supabase
-      .from('lesson_states')
-      .select('*')
-      .eq('user_id', session.user.id)
-      .single();
-
-    if (error) {
-      // Falls noch kein Eintrag existiert, Edge Function aufrufen
-      if (error.code === 'PGRST116') {
-        // "no rows returned"
-        // Edge function aufrufen oder Supabase RPC
-        const { data: newState, error: rpcError } = await supabase.rpc(
-          'initialize_lesson_state',
-          {
-            user_id: session.user.id,
-          }
-        );
-
-        if (rpcError) {
-          console.error(
-            'Fehler beim Initialisieren des Lektionsstatus:',
-            rpcError
-          );
-
-          // Fallback: Manuelles Erstellen über Insert
-          const defaultState = {
-            user_id: session.user.id,
-            current_lesson: 1,
-            completed_lessons: [],
-            progress: 0,
-            hasanat_counter: 0,
-            last_activity_date: new Date().toISOString(),
-          };
-
-          const { data: insertData, error: insertError } = await supabase
-            .from('lesson_states')
-            .insert(defaultState)
-            .select()
-            .single();
-
-          if (insertError) {
-            throw insertError;
-          }
-
-          return insertData;
-        }
-
-        return newState;
-      }
-
-      throw error;
-    }
-
-    return lessonState;
-  } catch (error) {
-    console.error('Fehler in getUserLessonState:', error);
-    // Null zurückgeben, damit die aufrufende Komponente entsprechend reagieren kann
-    return null;
-  }
-}
-
 export function ProfileSidebar() {
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
-  const [userProfile, setUserProfile] = useState<ExtendedUserProfile | null>(
+  const [clientData, setClientData] = useState<ClientData | null>(null);
+  const [lessonState, setLessonState] = useState<ClientLessonState | null>(
     null
   );
-  const [hasanatData, setHasanatData] = useState({
-    hasanat_count: 0,
-    hasanat_today: 0,
-  });
   const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
 
-  // Fetch user profile data from the backend
+  // Fetch user profile data from the server action
   useEffect(() => {
-    const fetchUserData = async () => {
+    const fetchProfileData = async () => {
+      if (!isAuthenticated || !user || authLoading) return;
+
       try {
         setIsLoading(true);
 
-        // Fetch profile data
-        const profileData = await getUserProfileData();
-        console.log('userProfile', profileData);
+        // Server-Action aufrufen, die RLS-Beschränkungen umgeht
+        console.log('Rufe serverseitige Profile-Action auf...');
+        const profileData = await getProfileAction();
 
-        // Fetch hasanat data from lesson state
-        try {
-          const lessonState = await getUserLessonState();
-          console.log('lessonState', lessonState);
+        console.log('Profildaten erhalten:', profileData);
 
-          if (lessonState && lessonState.hasanat_counter !== undefined) {
-            // Calculate today's hasanat (this is an example - adjust as needed)
-            const todayHasanat = Math.floor(Math.random() * 30); // Random for demonstration
-
-            setHasanatData({
-              hasanat_count: lessonState.hasanat_counter,
-              hasanat_today: todayHasanat,
-            });
-          }
-        } catch (hasanatError) {
-          console.error('Error fetching hasanat data:', hasanatError);
-          // Continue with default hasanat data
+        if (profileData.client) {
+          setClientData({
+            ...profileData.client,
+            plan: profileData.plan,
+          });
         }
 
-        setUserProfile(profileData);
+        if (profileData.lesson_state) {
+          setLessonState(profileData.lesson_state);
+        }
       } catch (e) {
-        console.error('Error fetching user profile:', e);
+        console.error('Fehler beim Laden der Profildaten:', e);
         setError('Fehler beim Laden des Profils');
       } finally {
         setIsLoading(false);
       }
     };
 
-    fetchUserData();
-  }, []);
+    fetchProfileData();
+  }, [user, isAuthenticated, authLoading, router]);
 
   // Show loading skeleton while fetching data
-  if (isLoading) {
+  if (isLoading || authLoading) {
     return (
       <div className='bg-white rounded-lg shadow-sm border border-gray-100 p-6'>
         <div className='flex flex-col items-center'>
@@ -289,7 +114,7 @@ export function ProfileSidebar() {
   }
 
   // Show error message if fetching failed
-  if (error || !userProfile) {
+  if (error || !clientData) {
     return (
       <div className='bg-white rounded-lg shadow-sm border border-gray-100 p-6'>
         <div className='text-center'>
@@ -302,12 +127,20 @@ export function ProfileSidebar() {
   }
 
   // Get the correct avatar URL or fallback to placeholder
-  const avatarSrc =
-    userProfile.avatar_url || userProfile.avatar
-      ? userProfile.avatar_url ||
-        userProfile.avatar ||
-        '/img/avatar-placeholder.svg'
-      : '/img/avatar-placeholder.svg';
+  const avatarSrc = clientData.first_name
+    ? `/img/avatar-placeholder.svg`
+    : '/img/avatar-placeholder.svg';
+
+  // Format member_since based on user creation date
+  const memberSince = user?.created_at
+    ? new Date(user.created_at).toLocaleDateString('de-DE', {
+        month: 'long',
+        year: 'numeric',
+      })
+    : new Date().toLocaleDateString('de-DE', {
+        month: 'long',
+        year: 'numeric',
+      });
 
   return (
     <div className='bg-white rounded-lg shadow-sm border border-gray-100 p-6'>
@@ -322,8 +155,13 @@ export function ProfileSidebar() {
               className='rounded-full'
             />
           </div>
-          <Link href='/profil' aria-label='Profil bearbeiten'>
-            <div className='absolute -bottom-2 -right-2 bg-[#4AA4DE] rounded-full p-1.5 cursor-pointer'>
+          <Link
+            href='/profile'
+            aria-label='Profil bearbeiten'
+            prefetch={true}
+            scroll={false}
+          >
+            <div className='absolute -bottom-2 -right-2 bg-[#4AA4DE] rounded-full p-1.5 cursor-pointer transition-transform hover:scale-110 hover:shadow-md'>
               <svg
                 width='16'
                 height='16'
@@ -340,9 +178,9 @@ export function ProfileSidebar() {
           </Link>
         </div>
         <h2 className='text-xl font-bold mb-1'>
-          {userProfile.first_name || userProfile.user_name}
+          {clientData.first_name || clientData.user_name}
         </h2>
-        <p className='text-gray-500 text-sm mb-6'>@{userProfile.user_name}</p>
+        <p className='text-gray-500 text-sm mb-6'>@{clientData.user_name}</p>
       </div>
 
       <div className='space-y-4'>
@@ -361,9 +199,7 @@ export function ProfileSidebar() {
             </div>
             <div>
               <p className='font-medium'>
-                {userProfile.current_course ||
-                  userProfile.plan?.title ||
-                  'Quran LeseHack'}
+                {clientData.plan?.title || 'Quran LeseHack'}
               </p>
               <p className='text-xs text-gray-500'>Aktueller Kurs</p>
             </div>
@@ -387,13 +223,7 @@ export function ProfileSidebar() {
               </svg>
             </div>
             <div>
-              <p className='font-medium'>
-                {userProfile.member_since ||
-                  new Date().toLocaleDateString('de-DE', {
-                    month: 'long',
-                    year: 'numeric',
-                  })}
-              </p>
+              <p className='font-medium'>{memberSince}</p>
               <p className='text-xs text-gray-500'>Mitglied seit</p>
             </div>
           </div>
@@ -414,7 +244,7 @@ export function ProfileSidebar() {
                 Deine Hasanat
               </p>
               <p className='text-white text-2xl font-bold'>
-                {userProfile.hasanat_count || hasanatData.hasanat_count || 0}
+                {lessonState?.hasanat_counter || 0}
               </p>
             </div>
             <div className='relative w-16 h-16'>
@@ -430,9 +260,7 @@ export function ProfileSidebar() {
           <div className='mt-3 pt-3 border-t border-blue-300/30 relative z-10'>
             <div className='flex justify-between items-center'>
               <p className='text-white text-xs'>Heute gesammelt</p>
-              <p className='text-white text-sm font-bold'>
-                +{userProfile.hasanat_today || hasanatData.hasanat_today || 0}
-              </p>
+              <p className='text-white text-sm font-bold'>+{0}</p>
             </div>
           </div>
         </div>
