@@ -2,6 +2,7 @@
 
 // import { UserProgressWidget } from '@/components/user-progress-widget';
 import { ProfileSidebar } from '@/components/profile-sidebar';
+import { UserProgressWidget } from '@/components/user-progress-widget';
 
 // import { WeeklyProgress } from '@/components/weekly-progress';
 // import { CurrentLesson } from '@/components/current-lesson';
@@ -28,7 +29,7 @@ export default function Home() {
           Dein Fortschritt
         </div>
         <div className='border border-gray-200 rounded-b-lg p-4 mb-6'>
-          {/* <UserProgressWidget /> */}
+          <UserProgressWidget />
         </div>
 
         {/* Erfolge der letzten Woche */}

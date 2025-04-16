@@ -351,19 +351,9 @@ interface ProfileData {
  */
 export async function getProfileAction(): Promise<ProfileData> {
   const supabase = await createAdminClient();
-  console.log("adminClient", supabase);
-  console.log(
-    "NEXT_PUBLIC_SUPABASE_URL:",
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-  );
-  console.log(
-    "Service Role Key vorhanden:",
-    !!process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY,
-  );
 
   // Aktuelle Session prüfen mit getUser() für sicherere Authentifizierung
   const { data: userData } = await supabase.auth.getUser();
-  console.log("userData vollständig:", userData);
 
   if (!userData.user) {
     return {
@@ -377,17 +367,12 @@ export async function getProfileAction(): Promise<ProfileData> {
 
   const userId = userData.user.id;
   // 1. Versuche Client zu laden
-  console.log("userId", userId);
-  console.log("Führe Abfrage mit auth_id =", userId, "durch");
 
   let { data: clientData, error: clientError } = await supabase
     .from("clients")
     .select("*")
     .eq("client_id", userId)
     .single();
-
-  console.log("clientData", clientData);
-  console.log("clientError:", clientError);
 
   // 2. Plan-Daten laden, falls vorhanden
   let planData = null;
@@ -474,4 +459,44 @@ export async function deleteUserAction(
         : "Unbekannter Fehler beim Löschen des Benutzers",
     };
   }
+}
+
+export async function getLessonsStructureAction() {
+  const supabase = await createAdminClient();
+
+  const { data: lessonsStructure } = await supabase
+    .from("lessons_structure")
+    .select("*");
+
+  return lessonsStructure;
+}
+
+export async function getLessonStateAction(clientId: string) {
+  const supabase = await createAdminClient();
+
+  const { data: lessonState } = await supabase
+    .from("clients_lesson_state")
+    .select("*")
+    .eq("client_id", clientId)
+    .single();
+
+  return lessonState;
+}
+
+export async function getLessonStructureMaxExercisesCount(lessonNo: number) {
+  const supabase = await createAdminClient();
+  
+  // Suche nach der entsprechenden Lektion
+  const { data: lessonStructure, error } = await supabase
+    .from('lessons_structure')
+    .select('lesson_no, num_exercises')
+    .eq('lesson_no', lessonNo)
+    .single();
+    
+  if (error) {
+    console.error('Fehler beim Abrufen der Lektionsstruktur:', error);
+    return null;
+  }
+  
+  return lessonStructure?.num_exercises;
 }
