@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { getUserWeeklyProgress } from '@/app/actions';
 
 interface WeeklyProgress {
   completed_exercises: number;
