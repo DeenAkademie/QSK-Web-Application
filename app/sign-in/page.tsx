@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { signInAction } from '@/app/actions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -27,6 +27,8 @@ export default function SignIn() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loginSuccess, setLoginSuccess] = useState(false);
+  const searchParams = useSearchParams();
+  const redirectTo = searchParams.get('redirect') || '/';
 
   // Redirect wenn bereits angemeldet
   useEffect(() => {
@@ -57,7 +59,7 @@ export default function SignIn() {
         setTimeout(async () => {
           await refreshAuth();
           // Nach Aktualisierung zum angegebenen Ziel weiterleiten
-          router.push(result.redirectTo || '/');
+          router.push(redirectTo || '/');
         }, 500);
       } else if (result.error) {
         // Bei Fehlern die Fehlermeldung anzeigen
