@@ -1,0 +1,1 @@
+INSERT INTO "public"."plans" ("id", "title", "description", "price", "duration_days", "features") VALUES ('qsk-basic', 'qsk-basic', null, '9.99', '365', null), ('quran-lesehack', 'quran-lesehack', null, '1', '365', null);

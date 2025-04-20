@@ -485,19 +485,19 @@ export async function getLessonStateAction(clientId: string) {
 
 export async function getLessonStructureMaxExercisesCount(lessonNo: number) {
   const supabase = await createAdminClient();
-  
+
   // Suche nach der entsprechenden Lektion
   const { data: lessonStructure, error } = await supabase
-    .from('lessons_structure')
-    .select('lesson_no, num_exercises')
-    .eq('lesson_no', lessonNo)
+    .from("lessons_structure")
+    .select("lesson_no, num_exercises")
+    .eq("lesson_no", lessonNo)
     .single();
-    
+
   if (error) {
-    console.error('Fehler beim Abrufen der Lektionsstruktur:', error);
+    console.error("Fehler beim Abrufen der Lektionsstruktur:", error);
     return null;
   }
-  
+
   return lessonStructure?.num_exercises;
 }
 
@@ -506,91 +506,91 @@ export async function getUserWeeklyProgress(): Promise<{
     completed_exercises: number;
     earned_hasanat: number;
     progress_percentage: number;
-  },
-  error: null | Error
+  };
+  error: null | Error;
 }> {
   try {
     const supabase = await createAdminClient();
-    
+
     // Zeitraum: letzte 7 Tage
     const endDate = new Date();
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - 7);
-    
+
     // 1. Abgeschlossene Übungen und Hasanat in den letzten 7 Tagen abrufen
     const { data: userData } = await supabase.auth.getUser();
     if (!userData.user) {
       throw new Error("Nicht authentifiziert");
     }
-    
+
     const userId = userData.user.id;
-    
+
     const { data: weeklyStats, error: weeklyStatsError } = await supabase
-      .from('submitted_exercises')
-      .select('count(*), sum(earned_hasanat)')
-      .eq('client_id', userId)
-      .gte('submitted_at', startDate.toISOString())
-      .lte('submitted_at', endDate.toISOString())
+      .from("submitted_exercises")
+      .select("count(*), sum(earned_hasanat)")
+      .eq("client_id", userId)
+      .gte("submitted_at", startDate.toISOString())
+      .lte("submitted_at", endDate.toISOString())
       .single();
-      
+
     if (weeklyStatsError) {
       throw weeklyStatsError;
     }
-    
+
     // 2. Fortschrittsprozent berechnen
     // Um den Fortschritt zu berechnen, müssen wir wissen:
-    // - Wie viele Übungen hat der Benutzer insgesamt gemacht 
+    // - Wie viele Übungen hat der Benutzer insgesamt gemacht
     // - Wie viele Übungen gibt es in seinen aktuellen Lektionen
-    
+
     // Aktuelle Lektion des Benutzers abrufen
     const { data: lessonState, error: lessonError } = await supabase
-      .from('clients_lesson_state')
-      .select('lesson_no, exercise_no, exercise_passed_count')
-      .eq('client_id', userId)
+      .from("clients_lesson_state")
+      .select("lesson_no, exercise_no, exercise_passed_count")
+      .eq("client_id", userId)
       .single();
-      
+
     if (lessonError) {
       throw lessonError;
     }
-    
+
     // Gesamtzahl der Übungen in dieser Lektion abrufen
     const { data: lessonStructure, error: structureError } = await supabase
-      .from('lessons_structure')
-      .select('num_exercises')
-      .eq('lesson_no', lessonState.lesson_no)
+      .from("lessons_structure")
+      .select("num_exercises")
+      .eq("lesson_no", lessonState.lesson_no)
       .single();
-      
+
     if (structureError) {
       throw structureError;
     }
-    
+
     // Fortschritt berechnen
     const totalExercisesCompleted = lessonState.exercise_passed_count || 0;
     const totalExercisesInLesson = lessonStructure.num_exercises || 1; // Vermeiden von Division durch Null
-    
+
     // Prozent des Fortschritts berechnen (0-100)
-    const progressPercentage = (totalExercisesCompleted / totalExercisesInLesson) * 100;
-    
+    const progressPercentage =
+      (totalExercisesCompleted / totalExercisesInLesson) * 100;
+
     return {
       data: {
         // @ts-ignore
         completed_exercises: parseInt(weeklyStats.count) || 0,
         // @ts-ignore
         earned_hasanat: parseInt(weeklyStats.sum) || 0,
-        progress_percentage: progressPercentage
+        progress_percentage: progressPercentage,
       },
-      error: null
+      error: null,
     };
-    
   } catch (error) {
     console.error("Fehler beim Abrufen der Wochendaten:", error);
     return {
       data: {
         completed_exercises: 0,
         earned_hasanat: 0,
-        progress_percentage: 0
+        progress_percentage: 0,
       },
-      error: error instanceof Error ? error : new Error(String(error))
+      error: error instanceof Error ? error : new Error(String(error)),
     };
   }
 }

@@ -65,11 +65,6 @@ export function LeftSidebar({ className }: LeftSidebarProps) {
   const authenticatedMenuItems: MenuItem[] = [
     ...publicMenuItems,
     {
-      href: '/lessons',
-      label: 'Deine Kurse',
-      icon: <BookOpen className='h-5 w-5' />,
-    },
-    {
       href: '/courses',
       label: 'Kurse',
       icon: <GraduationCap className='h-5 w-5' />,
