@@ -63,7 +63,7 @@ serve(async (req) => {
             lastName,
             gender,
             role = "user",
-            plan_id = "quran-lesehack",
+            plan_id = "7fee5a7c-dd11-44a2-b1ad-ebfb55be4fb0",
         } = reqBody;
 
         console.log("Processing registration for:", email);

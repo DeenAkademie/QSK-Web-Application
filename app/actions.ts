@@ -4,8 +4,8 @@ import { encodedRedirect } from "@/utils/utils";
 import { createAdminClient, createClient } from "@/utils/supabase/server";
 import { redirect } from "next/navigation";
 
-// Interface für die standardisierte API-Antwort
-interface ApiResponse<T = any> {
+// export Interface für die standardisierte API-Antwort
+export interface ApiResponse<T = any> {
   success: boolean;
   data?: T;
   error?: string;
@@ -322,7 +322,7 @@ export const signOutAction = async () => {
 /**
  * Profil-Datenstrukturen
  */
-interface ProfileData {
+export interface ProfileData {
   client: {
     auth_id: string;
     user_name: string;
@@ -592,5 +592,377 @@ export async function getUserWeeklyProgress(): Promise<{
       },
       error: error instanceof Error ? error : new Error(String(error)),
     };
+  }
+}
+
+// Video-Datenstrukturen
+export interface VideoProgress {
+  status: string;
+  progress_percent: number;
+  last_position_seconds: number;
+}
+
+export interface Video {
+  id: string;
+  title: string;
+  section_id: string;
+  thumbnail: string;
+  vimeo_id: string | null;
+  exercise_id: string | null;
+  display_order: number | null;
+  completed: boolean;
+  progress: VideoProgress;
+}
+
+export interface Section {
+  id: string;
+  module_id: string;
+  title: string;
+  display_order: number;
+  completed: boolean;
+  completion_percent: number;
+  videos: Video[];
+}
+
+export interface VideoModule {
+  id: string;
+  title: string;
+  description: string;
+  thumbnail: string;
+  display_order: number;
+  completed: boolean;
+  completion_percent: number;
+  sections: Section[];
+}
+
+export async function getAllVideos(): Promise<VideoModule[]> {
+  try {
+    const supabase = await createAdminClient();
+
+    const { data: modules, error } = await supabase
+      .from("course_modules")
+      .select(`
+        *,
+        course_sections (
+          *,
+          course_videos (
+            *,
+            clients_course_progress!inner (
+              updated_at
+            )
+          )
+        )
+      `)
+      .order("display_order", { ascending: true });
+
+    if (error) {
+      console.error("Error fetching videos:", error);
+      throw error;
+    }
+
+    return modules.map((module: any) => ({
+      id: module.id,
+      title: module.title,
+      description: module.description || "",
+      thumbnail: module.thumbnail,
+      display_order: module.display_order,
+      completed: false,
+      completion_percent: 0,
+      sections: module.course_sections.map((section: any) => ({
+        id: section.id,
+        module_id: section.module_id,
+        title: section.title,
+        display_order: section.display_order,
+        completed: false,
+        completion_percent: 0,
+        videos: section.course_videos.map((video: any) => ({
+          id: video.id,
+          title: video.title,
+          section_id: video.section_id,
+          thumbnail: video.thumbnail,
+          vimeo_id: video.vimeo_id,
+          exercise_id: video.exercise_id,
+          display_order: video.display_order,
+          completed: !!video.clients_course_progress?.[0],
+          progress: {
+            status: video.clients_course_progress?.[0] ? "completed" : "locked",
+            progress_percent: video.clients_course_progress?.[0] ? 100 : 0,
+            last_position_seconds: 0,
+          },
+        })),
+      })),
+    }));
+  } catch (error) {
+    console.error("Error in getAllVideos:", error);
+    throw error;
+  }
+}
+
+export async function getVideo(videoId: string): Promise<{
+  video: Video | null;
+  nextVideo: Video | null;
+  prevVideo: Video | null;
+  module: VideoModule | null;
+  section: Section | null;
+}> {
+  try {
+    const supabase = await createAdminClient();
+    const { data, error } = await supabase.functions.invoke("video_get", {
+      body: { video_id: videoId },
+    });
+
+    if (error) {
+      console.error("Error fetching video:", error);
+      return {
+        video: null,
+        nextVideo: null,
+        prevVideo: null,
+        module: null,
+        section: null,
+      };
+    }
+
+    if (data?.data?.video) {
+      const videoData = data.data.video;
+      const completed = !!videoData.clients_course_progress?.[0];
+
+      const video: Video = {
+        id: videoData.id,
+        title: videoData.title,
+        section_id: videoData.section_id,
+        thumbnail: videoData.thumbnail,
+        vimeo_id: videoData.vimeo_id,
+        exercise_id: videoData.exercise_id,
+        display_order: videoData.display_order,
+        completed,
+        progress: {
+          status: completed ? "completed" : "locked",
+          progress_percent: completed ? 100 : 0,
+          last_position_seconds: 0,
+        },
+      };
+
+      const moduleObj: VideoModule = {
+        id: videoData.module_id,
+        title: videoData.module_title,
+        description: videoData.module_description || "",
+        thumbnail: videoData.module_thumbnail,
+        display_order: videoData.module_display_order,
+        completed: false,
+        completion_percent: 0,
+        sections: [],
+      };
+
+      const sectionObj: Section = {
+        id: videoData.section_id,
+        module_id: videoData.module_id,
+        title: videoData.section_title,
+        display_order: videoData.section_display_order,
+        completed: false,
+        completion_percent: 0,
+        videos: [],
+      };
+
+      let nextVideoObj: Video | null = null;
+      if (videoData.next_video_id) {
+        nextVideoObj = {
+          id: videoData.next_video_id,
+          title: videoData.next_video_title || "",
+          section_id: videoData.next_video_section_id,
+          thumbnail: videoData.next_video_thumbnail || "",
+          vimeo_id: videoData.next_video_vimeo_id,
+          exercise_id: videoData.next_video_exercise_id,
+          display_order: videoData.next_video_display_order,
+          completed: false,
+          progress: {
+            status: "locked",
+            progress_percent: 0,
+            last_position_seconds: 0,
+          },
+        };
+      }
+
+      let prevVideoObj: Video | null = null;
+      if (videoData.prev_video_id) {
+        prevVideoObj = {
+          id: videoData.prev_video_id,
+          title: videoData.prev_video_title || "",
+          section_id: videoData.prev_video_section_id,
+          thumbnail: videoData.prev_video_thumbnail || "",
+          vimeo_id: videoData.prev_video_vimeo_id,
+          exercise_id: videoData.prev_video_exercise_id,
+          display_order: videoData.prev_video_display_order,
+          completed: false,
+          progress: {
+            status: "locked",
+            progress_percent: 0,
+            last_position_seconds: 0,
+          },
+        };
+      }
+
+      return {
+        video,
+        nextVideo: nextVideoObj,
+        prevVideo: prevVideoObj,
+        module: moduleObj,
+        section: sectionObj,
+      };
+    }
+
+    return {
+      video: null,
+      nextVideo: null,
+      prevVideo: null,
+      module: null,
+      section: null,
+    };
+  } catch (error) {
+    console.error("Error in getVideo:", error);
+    return {
+      video: null,
+      nextVideo: null,
+      prevVideo: null,
+      module: null,
+      section: null,
+    };
+  }
+}
+
+export async function markVideoAsCompleted(
+  videoId: string,
+): Promise<VideoProgress | null> {
+  try {
+    if (!videoId) {
+      console.error("Ungültige Video-ID:", videoId);
+      return null;
+    }
+
+    const supabase = await createAdminClient();
+    const { data, error } = await supabase.functions.invoke(
+      "video_progress_update",
+      {
+        body: {
+          video_id: videoId,
+          mark_completed: true,
+        },
+      },
+    );
+
+    if (error) {
+      console.error("Error marking video as completed:", error);
+      return null;
+    }
+
+    return {
+      status: "completed",
+      progress_percent: 100,
+      last_position_seconds: 0,
+    };
+  } catch (error) {
+    console.error("Error in markVideoAsCompleted:", error);
+    return null;
+  }
+}
+
+export async function getUserCourseData(): Promise<{
+  course: {
+    id: string;
+    title: string;
+    description: string;
+    modules: VideoModule[];
+  } | null;
+  error?: string;
+}> {
+  try {
+    const supabase = await createAdminClient();
+
+    // 1. Abgeschlossene Übungen und Hasanat in den letzten 7 Tagen abrufen
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) {
+      throw new Error("Nicht authentifiziert");
+    }
+    // 2. Hole den Client mit der plan_id
+    const { data: client, error: clientError } = await supabase
+      .from("clients")
+      .select("plan_id")
+      .eq("client_id", userData.user.id)
+      .single();
+
+    if (clientError || !client) {
+      return { course: null, error: "Client not found" };
+    }
+
+    // 3. Hole den Kurs und alle zugehörigen Daten
+    const { data: course, error: courseError } = await supabase
+      .from("courses")
+      .select(`
+        *,
+        course_modules!course_modules_course_id_fkey (
+          *,
+          course_sections!course_sections_module_id_fkey (
+            *,
+            course_videos!course_videos_section_id_fkey (
+              *,
+              clients_course_progress!clients_course_progress_video_id_fkey (
+                updated_at
+              )
+            )
+          )
+        )
+      `)
+      .eq("plan_id", client.plan_id)
+      .single();
+
+    console.log("course", course);
+    if (courseError || !course) {
+      return { course: null, error: "Course not found" };
+    }
+
+    // 4. Mappe die Daten in das gewünschte Format
+    return {
+      course: {
+        id: course.id,
+        title: course.title,
+        description: course.description,
+        modules: course.course_modules.map((module: any) => ({
+          id: module.id,
+          title: module.title,
+          description: module.description || "",
+          thumbnail: module.thumbnail,
+          display_order: module.display_order,
+          completed: false,
+          completion_percent: 0,
+          sections: module.course_sections.map((section: any) => ({
+            id: section.id,
+            module_id: section.module_id,
+            title: section.title,
+            display_order: section.display_order,
+            completed: false,
+            completion_percent: 0,
+            videos: section.course_videos.map((video: any) => ({
+              id: video.id,
+              title: video.title,
+              section_id: video.section_id,
+              thumbnail: video.thumbnail,
+              vimeo_id: video.vimeo_id,
+              exercise_id: video.exercise_id,
+              display_order: video.display_order,
+              completed: !!video.clients_course_progress?.[0],
+              progress: {
+                status: video.clients_course_progress?.[0]
+                  ? "completed"
+                  : "locked",
+                progress_percent: video.clients_course_progress?.[0] ? 100 : 0,
+                last_position_seconds: 0,
+              },
+            })),
+          })),
+        })),
+      },
+    };
+  } catch (error) {
+    console.error("Error in getUserCourseData:", error);
+    return { course: null, error: "Internal server error" };
   }
 }

@@ -29,6 +29,9 @@ const executionOrder = [
   'lessons_structure-seed.sql',
   'exercises_structure-seed.sql',
   'exercises_content-seed.sql',
+  'plans-seed.sql',
+  'course-seed.sql',
+
   // Alle anderen Dateien werden danach in alphabetischer Reihenfolge ausgeführt
 ];
 
