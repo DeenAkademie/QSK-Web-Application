@@ -9,6 +9,7 @@ interface Section {
   unlocked: boolean;
   completed: boolean;
   completion_percent: number;
+  currentVideoId?: string;
   videos: {
     id: string;
     title: string;
@@ -17,6 +18,8 @@ interface Section {
     unlocked: boolean;
     completed: boolean;
     completion_percent: number;
+    vimeo_id?: string;
+    exercise_id?: string;
   }[];
 }
 
@@ -29,6 +32,7 @@ interface Module {
   unlocked: boolean;
   completed: boolean;
   completion_percent: number;
+  currentSectionId?: string;
 }
 
 export interface Course {
@@ -50,6 +54,8 @@ interface CourseState {
   fetchCourses: () => Promise<void>;
   setCurrentCourse: (courseId: string) => void;
   setCurrentModuleId: (moduleId: string) => void;
+  setCurrentSectionId: (sectionId: string) => void;
+  setCurrentVideoId: (videoId: string) => void;
   markVideoAsCompleted: (videoId: string) => Promise<void>;
 }
 
@@ -92,6 +98,64 @@ export const useCourseStore = create<CourseState>((set) => ({
         currentCourse: {
           ...state.currentCourse,
           currentModuleId: moduleId,
+        },
+      };
+      localStorage.setItem('courseState', JSON.stringify(updatedState));
+      return updatedState;
+    });
+  },
+  setCurrentSectionId: (sectionId: string) => {
+    set((state) => {
+      if (!state.currentCourse) return state;
+      const currentModule = state.currentCourse.modules.find(
+        (m) => m.id === state.currentCourse.currentModuleId
+      );
+      if (!currentModule) return state;
+
+      const updatedState = {
+        ...state,
+        currentCourse: {
+          ...state.currentCourse,
+          modules: state.currentCourse.modules.map((m) =>
+            m.id === currentModule.id
+              ? { ...m, currentSectionId: sectionId }
+              : m
+          ),
+        },
+      };
+      localStorage.setItem('courseState', JSON.stringify(updatedState));
+      return updatedState;
+    });
+  },
+  setCurrentVideoId: (videoId: string) => {
+    set((state) => {
+      if (!state.currentCourse) return state;
+      const currentModule = state.currentCourse.modules.find(
+        (m) => m.id === state.currentCourse.currentModuleId
+      );
+      if (!currentModule) return state;
+
+      const currentSection = currentModule.sections.find(
+        (s) => s.id === currentModule.currentSectionId
+      );
+      if (!currentSection) return state;
+
+      const updatedState = {
+        ...state,
+        currentCourse: {
+          ...state.currentCourse,
+          modules: state.currentCourse.modules.map((m) =>
+            m.id === currentModule.id
+              ? {
+                  ...m,
+                  sections: m.sections.map((s) =>
+                    s.id === currentSection.id
+                      ? { ...s, currentVideoId: videoId }
+                      : s
+                  ),
+                }
+              : m
+          ),
         },
       };
       localStorage.setItem('courseState', JSON.stringify(updatedState));

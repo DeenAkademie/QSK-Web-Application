@@ -10,11 +10,24 @@ import { useCourseStore } from '@/store/course-store';
 
 export default function ModuleSectionsPage() {
   const router = useRouter();
-  const { currentCourse, isLoading, error, fetchCourses } = useCourseStore();
+  const {
+    currentCourse,
+    isLoading,
+    error,
+    fetchCourses,
+    setCurrentVideoId,
+    setCurrentSectionId,
+  } = useCourseStore();
 
   useEffect(() => {
     fetchCourses();
   }, [fetchCourses]);
+
+  const handleVideoClick = (sectionId: string, videoId: string) => {
+    setCurrentSectionId(sectionId);
+    setCurrentVideoId(videoId);
+    router.push('/courses/modules/sections/video');
+  };
 
   if (isLoading) {
     return (
@@ -228,9 +241,7 @@ export default function ModuleSectionsPage() {
                         {video.unlocked ? (
                           <Button
                             onClick={() =>
-                              router.push(
-                                `/courses/modules/sections/videos/${video.id}`
-                              )
+                              handleVideoClick(section.id, video.id)
                             }
                             className='w-full'
                             variant={video.completed ? 'outline' : 'default'}
