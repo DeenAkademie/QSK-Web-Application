@@ -5,17 +5,17 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { LockIcon, CheckIcon, PlayIcon } from 'lucide-react';
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useCourseStore } from '@/store/course-store';
 
-export default function CourseModulesPage() {
-  const { courseId } = useParams();
+export default function ModulesPage() {
   const router = useRouter();
-  const { course, isLoading, error, fetchCourse } = useCourseStore();
+  const { currentCourse, isLoading, error, fetchCourses, setCurrentModuleId } =
+    useCourseStore();
 
   useEffect(() => {
-    fetchCourse();
-  }, [fetchCourse]);
+    fetchCourses();
+  }, [fetchCourses]);
 
   if (isLoading) {
     return (
@@ -28,13 +28,17 @@ export default function CourseModulesPage() {
         <div className='space-y-4'>
           <Skeleton className='h-12 w-1/2' />
           <Skeleton className='h-6 w-3/4' />
-          <Skeleton className='h-64 w-full' />
+          <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6'>
+            {[1, 2, 3].map((i) => (
+              <Skeleton key={i} className='h-64 w-full' />
+            ))}
+          </div>
         </div>
       </div>
     );
   }
 
-  if (error) {
+  if (error || !currentCourse) {
     return (
       <div className='p-6'>
         <div className='flex items-center mb-6'>
@@ -47,20 +51,10 @@ export default function CourseModulesPage() {
     );
   }
 
-  if (!course) {
-    return (
-      <div className='p-6'>
-        <div className='flex items-center mb-6'>
-          <Link href='/courses' className='text-[#4AA4DE] hover:underline mr-2'>
-            &larr; Zurück zu den Kursen
-          </Link>
-        </div>
-        <div className='text-gray-500 text-center py-4'>
-          Kurs nicht gefunden
-        </div>
-      </div>
-    );
-  }
+  const handleModuleClick = (moduleId: string) => {
+    setCurrentModuleId(moduleId);
+    router.push('/courses/modules/sections');
+  };
 
   return (
     <div className='p-6'>
@@ -70,27 +64,31 @@ export default function CourseModulesPage() {
         </Link>
       </div>
 
-      <h1 className='text-2xl font-bold mb-1'>{course.title}</h1>
-      <p className='mb-6 text-gray-600'>{course.description}</p>
+      {/* Course Header */}
+      <div className='mb-8'>
+        <h1 className='text-2xl font-bold mb-2'>{currentCourse.title}</h1>
+        <p className='text-gray-600'>{currentCourse.description}</p>
 
-      {/* Gesamtfortschritt für den Kurs */}
-      <div className='mb-6'>
-        <div className='flex justify-between mb-1'>
-          <span className='text-sm font-semibold'>Gesamtfortschritt</span>
-          <span className='text-sm font-medium'>
-            {course.completion_percent || 0}%
-          </span>
-        </div>
-        <div className='w-full bg-gray-200 rounded-full h-2.5'>
-          <div
-            className='bg-[#4AA4DE] h-2.5 rounded-full'
-            style={{ width: `${course.completion_percent || 0}%` }}
-          ></div>
+        {/* Course Progress */}
+        <div className='mt-4'>
+          <div className='flex justify-between mb-1'>
+            <span className='text-sm font-medium'>Kurs-Fortschritt</span>
+            <span className='text-sm font-medium'>
+              {currentCourse.completion_percent || 0}%
+            </span>
+          </div>
+          <div className='w-full bg-gray-200 rounded-full h-2'>
+            <div
+              className='bg-[#4AA4DE] h-2 rounded-full'
+              style={{ width: `${currentCourse.completion_percent || 0}%` }}
+            ></div>
+          </div>
         </div>
       </div>
 
+      {/* Modules Grid */}
       <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6'>
-        {course?.modules?.map((module) => (
+        {currentCourse.modules?.map((module) => (
           <div
             key={module.id}
             className={`border ${
@@ -99,7 +97,8 @@ export default function CourseModulesPage() {
                   ? 'border-green-300 bg-green-50'
                   : 'border-gray-200'
                 : 'border-gray-200 bg-gray-50 opacity-75'
-            } rounded-lg overflow-hidden shadow-sm transition-all hover:shadow-md`}
+            } rounded-lg overflow-hidden shadow-sm transition-all hover:shadow-md cursor-pointer`}
+            onClick={() => handleModuleClick(module.id)}
           >
             <div className='relative'>
               <div
@@ -150,7 +149,7 @@ export default function CourseModulesPage() {
               <h3 className='font-medium mb-1 truncate'>{module.title}</h3>
               <p className='text-sm text-gray-500 mb-4'>{module.description}</p>
 
-              {/* Modul-Fortschritt */}
+              {/* Module Progress */}
               <div className='mb-4'>
                 <div className='flex justify-between mb-1'>
                   <span className='text-sm font-medium'>Fortschritt</span>
@@ -161,7 +160,9 @@ export default function CourseModulesPage() {
                 <div className='w-full bg-gray-200 rounded-full h-2'>
                   <div
                     className='bg-[#4AA4DE] h-2 rounded-full'
-                    style={{ width: `${module.completion_percent || 0}%` }}
+                    style={{
+                      width: `${module.completion_percent || 0}%`,
+                    }}
                   ></div>
                 </div>
               </div>
@@ -169,9 +170,7 @@ export default function CourseModulesPage() {
               <div className='mt-4'>
                 {module.unlocked ? (
                   <Button
-                    onClick={() =>
-                      router.push(`/courses/${courseId}/modules/${module.id}`)
-                    }
+                    onClick={() => handleModuleClick(module.id)}
                     className='w-full'
                     variant={module.completed ? 'outline' : 'default'}
                   >
@@ -189,7 +188,7 @@ export default function CourseModulesPage() {
         ))}
       </div>
 
-      {course?.completed && (
+      {currentCourse.completed && (
         <div className='mt-8 p-4 bg-green-50 border border-green-200 rounded-md text-center'>
           <CheckIcon className='mx-auto h-12 w-12 text-green-500 mb-2' />
           <h3 className='text-xl font-bold text-green-700 mb-2'>

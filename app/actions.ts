@@ -3,6 +3,7 @@
 import { encodedRedirect } from "@/utils/utils";
 import { createAdminClient, createClient } from "@/utils/supabase/server";
 import { redirect } from "next/navigation";
+import { Course } from "@/store/course-store";
 
 // export Interface für die standardisierte API-Antwort
 export interface ApiResponse<T = any> {
@@ -865,24 +866,18 @@ export async function markVideoAsCompleted(
   }
 }
 
-export async function getUserCourseData(): Promise<{
-  course: {
-    id: string;
-    title: string;
-    description: string;
-    modules: VideoModule[];
-  } | null;
+export async function getUserCoursesData(): Promise<{
+  courses: Course[];
   error?: string;
 }> {
   try {
     const supabase = await createAdminClient();
 
-    // 1. Abgeschlossene Übungen und Hasanat in den letzten 7 Tagen abrufen
     const { data: userData } = await supabase.auth.getUser();
     if (!userData.user) {
       throw new Error("Nicht authentifiziert");
     }
-    // 2. Hole den Client mit der plan_id
+
     const { data: client, error: clientError } = await supabase
       .from("clients")
       .select("plan_id")
@@ -890,11 +885,10 @@ export async function getUserCourseData(): Promise<{
       .single();
 
     if (clientError || !client) {
-      return { course: null, error: "Client not found" };
+      return { courses: [], error: "Client not found" };
     }
 
-    // 3. Hole den Kurs und alle zugehörigen Daten
-    const { data: course, error: courseError } = await supabase
+    const { data: courses, error: coursesError } = await supabase
       .from("courses")
       .select(`
         *,
@@ -911,36 +905,20 @@ export async function getUserCourseData(): Promise<{
           )
         )
       `)
-      .eq("plan_id", client.plan_id)
-      .single();
+      .eq("plan_id", client.plan_id);
 
-    console.log("course", course);
-    if (courseError || !course) {
-      return { course: null, error: "Course not found" };
+    if (coursesError || !courses) {
+      return { courses: [], error: "Courses not found" };
     }
 
-    // 4. Mappe die Daten in das gewünschte Format
-    return {
-      course: {
-        id: course.id,
-        title: course.title,
-        description: course.description,
-        modules: course.course_modules.map((module: any) => ({
-          id: module.id,
-          title: module.title,
-          description: module.description || "",
-          thumbnail: module.thumbnail,
-          display_order: module.display_order,
-          completed: false,
-          completion_percent: 0,
-          sections: module.course_sections.map((section: any) => ({
-            id: section.id,
-            module_id: section.module_id,
-            title: section.title,
-            display_order: section.display_order,
-            completed: false,
-            completion_percent: 0,
-            videos: section.course_videos.map((video: any) => ({
+    // Process each course
+    const processedCourses = courses.map((course: any) => {
+      // Calculate module and section progress
+      const modules = course.course_modules.map((module: any) => {
+        const sections = module.course_sections.map((section: any) => {
+          const videos = section.course_videos.map((video: any) => {
+            const completed = !!video.clients_course_progress?.[0];
+            return {
               id: video.id,
               title: video.title,
               section_id: video.section_id,
@@ -948,21 +926,88 @@ export async function getUserCourseData(): Promise<{
               vimeo_id: video.vimeo_id,
               exercise_id: video.exercise_id,
               display_order: video.display_order,
-              completed: !!video.clients_course_progress?.[0],
-              progress: {
-                status: video.clients_course_progress?.[0]
-                  ? "completed"
-                  : "locked",
-                progress_percent: video.clients_course_progress?.[0] ? 100 : 0,
-                last_position_seconds: 0,
-              },
-            })),
-          })),
-        })),
-      },
-    };
+              completed,
+              unlocked: true, // First video is always unlocked
+              completion_percent: completed ? 100 : 0,
+            };
+          });
+
+          // Calculate section progress
+          const completedVideos = videos.filter((v: any) => v.completed).length;
+          const totalVideos = videos.length;
+          const completionPercent = totalVideos > 0
+            ? (completedVideos / totalVideos) * 100
+            : 0;
+
+          // Unlock next video if previous is completed
+          videos.forEach((video: any, index: number) => {
+            if (index > 0) {
+              video.unlocked = videos[index - 1].completed;
+            }
+          });
+
+          return {
+            id: section.id,
+            module_id: section.module_id,
+            title: section.title,
+            display_order: section.display_order,
+            completed: completionPercent === 100,
+            unlocked: true, // First section is always unlocked
+            completion_percent: completionPercent,
+            videos,
+          };
+        });
+
+        // Calculate module progress
+        const completedSections = sections.filter((s: any) =>
+          s.completed
+        ).length;
+        const totalSections = sections.length;
+        const completionPercent = totalSections > 0
+          ? (completedSections / totalSections) * 100
+          : 0;
+
+        // Unlock next section if previous is completed
+        sections.forEach((section: any, index: number) => {
+          if (index > 0) {
+            section.unlocked = sections[index - 1].completed;
+          }
+        });
+
+        return {
+          id: module.id,
+          title: module.title,
+          description: module.description || "",
+          thumbnail: module.thumbnail,
+          display_order: module.display_order,
+          completed: completionPercent === 100,
+          unlocked: true, // First module is always unlocked
+          completion_percent: completionPercent,
+          sections,
+        };
+      });
+
+      // Calculate course progress
+      const completedModules = modules.filter((m: any) => m.completed).length;
+      const totalModules = modules.length;
+      const courseCompletionPercent = totalModules > 0
+        ? (completedModules / totalModules) * 100
+        : 0;
+
+      return {
+        id: course.id,
+        title: course.title,
+        description: course.description,
+        thumbnail: course.thumbnail,
+        completed: courseCompletionPercent === 100,
+        completion_percent: courseCompletionPercent,
+        modules,
+      };
+    });
+
+    return { courses: processedCourses };
   } catch (error) {
-    console.error("Error in getUserCourseData:", error);
-    return { course: null, error: "Internal server error" };
+    console.error("Error in getUserCoursesData:", error);
+    return { courses: [], error: "Internal server error" };
   }
 }
